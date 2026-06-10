@@ -1,0 +1,7 @@
+interface:
+  display_name: "node.1024.hair 规则复写"
+  short_description: "从本机 Clash/Mihomo 行为证据生成并写入个人规则复写"
+  default_prompt: "使用 $clash-local-ops 帮我从本机 Clash/Mihomo 行为里找出域名线索，并写入 node.1024.hair 的 ruleOverwrite。"
+
+policy:
+  allow_implicit_invocation: true

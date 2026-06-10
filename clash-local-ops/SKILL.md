@@ -1,0 +1,90 @@
+---
+name: clash-local-ops
+description: Use when turning local Clash/Mihomo behavior evidence into node.1024.hair personal rule overrides, especially when the user wants to find domains from local app activity and write config.ruleOverwrite through the known node.1024.hair user config API.
+---
+
+# node.1024.hair 规则复写助手
+
+## 何时使用
+
+当用户要为 `node.1024.hair` 上的个人配置添加或修正 `ruleOverwrite`，并且需要从本机 Clash/Mihomo 行为里找到域名、进程、策略组、错分流或慢请求证据时，使用本 Skill。
+
+典型场景：某个 IDE、AI 工具、命令行或网页请求很慢，需要从 Clash/Mihomo 的日志、实时连接、DNS 查询或配置里确认目标域名，再把单独规则写入 `node.1024.hair` 的 `config.ruleOverwrite`。
+
+不要把本 Skill 当作通用 Clash 运维、节点测速或订阅整理工具。Clash/Mihomo 是证据来源和运行时；`node.1024.hair` 才是主要写入表面。
+
+## 工作流
+
+1. **先定位客户端资产。** 运行 `scripts/find-clash-assets.py` 或手动检查常见路径。不要直接读取大量日志；先列出候选文件、mtime、大小和配置入口。
+2. **识别运行时控制器。** 在配置里查 `external-controller`、`external-controller-cors`、`secret`、`log-level`。如果缺少控制器地址，先使用本地日志和配置文件，不要猜端口。
+3. **确认本机行为证据。** 明确时间窗口、应用或进程、目标域名、命中规则或策略组、慢或失败现象。优先取最近 5-15 分钟日志、`/connections`、`/logs?level=warning` 或目标进程附近的连接记录；只摘录域名、策略组、错误和时间，不复制 token、订阅 URL、完整节点。
+4. **确认本次配置订阅地址。** 让用户提供或明确确认本次要使用的 `node.1024.hair/config?uid=...&token=...`。历史对话里的示例 URL 只能说明格式，不能复用为凭据。展示时必须脱敏 token。
+5. **读取当前用户配置。** 使用已知的 `node.1024.hair` 用户配置 API，不从配置订阅地址推导端点。需要确认当前 `proxy-groups`、已有 `ruleOverwrite` 和目标字段。
+6. **选择目标策略组。** 目标组名必须来自当前 `node.1024.hair` 配置或用户明确指定的现有组；不要自造类似 AI、手动选择、DIRECT 之外的组名。若组不存在，要求用户选择实际组名。
+7. **选择规则匹配策略。** 域名精确命中用 `DOMAIN`，确认域名族才用 `DOMAIN-SUFFIX`，本机应用维度可用 `PROCESS-NAME`，`DOMAIN-KEYWORD` 只有用户明确接受扩大范围时使用。
+8. **写入前确认。** 展示证据、目标策略组、规则匹配策略、本次配置订阅地址状态、将修改的字段和 payload 摘要。只有用户确认后才调用 API。
+9. **写入并验证。** 写入时保留现有配置其它字段，只修改 `config.ruleOverwrite`。写入后让用户刷新配置或重载 Clash/Mihomo；能访问外部控制器时，用 `/rules`、`/connections`、目标域名复测或日志来验证命中。
+
+## 本地查找
+
+详细路径见 `references/local-assets.md`。
+
+常用命令：
+
+```bash
+python3 /path/to/clash-local-ops/scripts/find-clash-assets.py
+```
+
+快速人工查找：
+
+```bash
+find "$HOME/.config" "$HOME/Library/Application Support" -maxdepth 3 \
+  \( -iname '*clash*' -o -iname '*mihomo*' -o -iname '*verge*' \) -print 2>/dev/null
+```
+
+## 外部控制器
+
+详细 API 见 `references/official-clash-mihomo.md`。
+
+请求模板：
+
+```bash
+curl -H "Authorization: Bearer $CLASH_SECRET" "http://127.0.0.1:9090/connections"
+curl -H "Authorization: Bearer $CLASH_SECRET" "http://127.0.0.1:9090/rules"
+```
+
+实时日志和连接可以是 WebSocket，也可以先用普通 GET 看是否可用。不要把 `secret` 写进最终答案、提交、Skill 或 node.1024.hair 配置。
+
+## node.1024.hair 用户配置 API
+
+详细契约见 `references/rule-store-api.md`。
+
+默认把接口视为用户私有服务，所有示例必须使用占位符。不要把真实 `uid`、`token`、配置订阅地址或订阅 URL 写进 Skill、提交或最终输出。
+
+```bash
+curl "$NODE1024_BASE_URL/api/user?uid=$NODE1024_UID&token=$NODE1024_TOKEN" \
+  -X PUT \
+  -H "Content-Type: application/json" \
+  --data-raw '{"config":{"ruleOverwrite":"+rules:\n  - DOMAIN,example.com,DIRECT"}}'
+```
+
+如果用户提供了真实 token，只用于当次请求；展示时只保留 `uid` 或 token 前几位，不能完整复述。
+
+## 输出规范
+
+给用户的结论按这个顺序：
+
+1. 找到了哪些本机行为证据。
+2. 慢或错分流最可能涉及哪些域名、进程、当前命中规则或策略组。
+3. 推荐归并到哪个目标策略组，并说明该组来自当前配置。
+4. 推荐的规则匹配策略和规则片段。
+5. 本次配置订阅地址是否已确认，以及将修改的字段。
+6. 写入状态和验证步骤。
+
+规则片段必须是可复制的 YAML：
+
+```yaml
++rules:
+  - DOMAIN,api.example.com,[类]-海外AI🤖
+  - DOMAIN-SUFFIX,example-cdn.com,[类]-海外AI🤖
+```
