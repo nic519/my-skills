@@ -1,6 +1,6 @@
 ---
 name: clash-local-ops
-description: Use when turning local Clash/Mihomo behavior evidence into node.1024.hair personal rule overrides, especially when the user wants to find domains from local app activity and write config.ruleOverwrite through the known node.1024.hair user config API.
+description: Use when local app, IDE, Git, CLI, or web traffic needs Clash/Mihomo evidence turned into node.1024.hair personal rule overrides, especially for finding domains, strategy groups, and writing config.ruleOverwrite through the known user config API.
 ---
 
 # node.1024.hair 规则复写助手
@@ -11,13 +11,15 @@ description: Use when turning local Clash/Mihomo behavior evidence into node.102
 
 典型场景：某个 IDE、AI 工具、命令行或网页请求很慢，需要从 Clash/Mihomo 的日志、实时连接、DNS 查询或配置里确认目标域名，再把单独规则写入 `node.1024.hair` 的 `config.ruleOverwrite`。
 
-不要把本 Skill 当作通用 Clash 运维、节点测速或订阅整理工具。Clash/Mihomo 是证据来源和运行时；`node.1024.hair` 才是主要写入表面。
+默认解决路径是新增或修正 `node.1024.hair` 的 `ruleOverwrite`。不要把本 Skill 转向通用 Clash 运维、节点测速、系统代理、Git 代理、IDE 代理或 shell 环境变量配置；这些只能作为辅助证据，用来判断请求是否进入 Clash/Mihomo、命中了什么规则、应该补哪条域名或进程规则。除非用户明确要求，否则不要把 `git config http.proxy`、应用内代理设置、系统代理设置当成本 Skill 的主要解决方案。
+
+Clash/Mihomo 是证据来源和运行时；`node.1024.hair` 才是主要写入表面。
 
 ## 工作流
 
 1. **先定位客户端资产。** 运行 `scripts/find-clash-assets.py` 或手动检查常见路径。不要直接读取大量日志；先列出候选文件、mtime、大小和配置入口。
 2. **识别运行时控制器。** 优先运行 `scripts/inspect-runtime.py`。在配置里查 `external-controller`、`external-controller-cors`、`secret`、`log-level`；如果为空，再从运行进程里查 Mihomo 的 `-ext-ctl-unix /tmp/...sock`。不要猜端口。
-3. **确认本机行为证据。** 明确时间窗口、应用或进程、目标域名、命中规则或策略组、慢或失败现象。优先用 `scripts/collect-evidence.py` 查 `/connections`，必要时再看最近 5-15 分钟日志或 `/logs?level=warning`；只摘录域名、策略组、错误和时间，不复制 token、订阅 URL、完整节点。
+3. **确认本机行为证据。** 明确时间窗口、应用或进程、目标域名、命中规则或策略组、慢或失败现象。优先用 `scripts/collect-evidence.py` 查 `/connections`，必要时再看最近 5-15 分钟日志或 `/logs?level=warning`；只摘录域名、策略组、错误和时间，不复制 token、订阅 URL、完整节点。若问题来自 Trae、GitHub、Git、IDE 或 CLI，只把 Git/应用/环境代理检查当作判定请求路径的证据，下一步仍应回到可写入 `ruleOverwrite` 的域名、进程或策略组规则。
 4. **确认本次配置订阅地址。** 让用户提供或明确确认本次要使用的 `node.1024.hair/config?uid=...&token=...`。历史对话里的示例 URL 只能说明格式，不能复用为凭据。展示时必须脱敏 token。
 5. **读取当前用户配置。** 使用已知的 `node.1024.hair` 用户配置 API，不从配置订阅地址推导端点。优先用 `scripts/update-node1024-rules.py` 的 dry-run 模式确认将写入的 `ruleOverwrite`；需要确认当前 `proxy-groups`、已有 `ruleOverwrite` 和目标字段。
 6. **选择目标策略组。** 目标组名必须来自当前 `node.1024.hair` 配置或用户明确指定的现有组；不要自造类似 AI、手动选择、DIRECT 之外的组名。若组不存在，要求用户选择实际组名。
