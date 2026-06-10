@@ -2,7 +2,7 @@
 
 ## 查找顺序
 
-1. 先检查用户当前使用的客户端：Clash Verge / ClashX / mihomo-party / Clash for Windows / 其它封装。
+1. 先运行 `scripts/find-clash-assets.py` 和 `scripts/inspect-runtime.py`，确认用户当前使用的客户端：Clash Verge / ClashX / mihomo-party / Clash for Windows / 其它封装。
 2. 再检查通用配置目录：`~/.config/clash`、`~/.config/mihomo`、`~/.config/clash-verge`。
 3. 最后检查 macOS 应用支持目录：`~/Library/Application Support/...`。
 
@@ -31,13 +31,21 @@
 ## 慢 IDE 场景
 
 1. 记录用户说的 IDE 名称和进程名。不要只靠产品名猜域名。
-2. 按 mtime 取最近日志：
+2. 优先从控制器取连接证据：
+
+```bash
+python3 scripts/collect-evidence.py \
+  --controller unix:/tmp/mihomo-party-501-667.sock \
+  --keywords trae,mchost
+```
+
+3. 若控制器不可用，再按 mtime 取最近日志：
 
 ```bash
 ls -lt ~/.config/clash-verge/logs/*.log 2>/dev/null | head
 tail -n 300 ~/.config/clash-verge/logs/<latest>.log
 ```
 
-3. 搜索关键词：`timeout`、`error`、`connect`、`rule`、`match`、`openai`、`anthropic`、`github`、`cursor`、`tree`、`trae`、`ide`。
-4. 有外部控制器时，优先用 `/connections` 看活跃连接，必要时用 `/logs?level=debug` 临时观测。
-5. 只把可解释的域名写成规则；不要把 IP、临时 CDN 子域或带签名参数的 URL 直接写入规则。
+4. 搜索关键词：`timeout`、`error`、`connect`、`rule`、`match`、`anthropic`、`github`、`cursor`、`trae`、`mchost`、`ide`。
+5. 结论必须区分两层：应用是否进入 Clash/Mihomo 入口；进入后最终 `chains` 是 `DIRECT` 还是代理组。
+6. 只把可解释的域名写成规则；不要把 IP、临时 CDN 子域或带签名参数的 URL 直接写入规则。

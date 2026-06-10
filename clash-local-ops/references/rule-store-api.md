@@ -2,12 +2,22 @@
 
 ## 目标
 
-把从本机行为证据中提炼出的 Clash/Mihomo 规则写入用户的 `node.1024.hair` 个人配置，重点字段是：
+把从本机行为证据中提炼出的 Clash/Mihomo 规则写入用户的 `node.1024.hair` 个人配置，重点字段是 `ruleOverwrite`。
+
+实测接口形态：
 
 ```json
 {
-  "config": {
-    "ruleOverwrite": "+rules:\n  - DOMAIN,example.com,DIRECT"
+  "code": 0,
+  "msg": "操作成功",
+  "data": {
+    "accessToken": "...",
+    "appendSubList": [],
+    "fileName": "BIGME1",
+    "requiredFilters": "...",
+    "ruleOverwrite": "+rules:\n  - DOMAIN,example.com,DIRECT",
+    "ruleUrl": "https://node.1024.hair/api/subscription/template/...",
+    "updatedAt": "..."
   }
 }
 ```
@@ -21,10 +31,10 @@ export NODE1024_BASE_URL="https://node.1024.hair"
 export NODE1024_UID="..."
 export NODE1024_TOKEN="..."
 
-curl "$NODE1024_BASE_URL/api/user?uid=$NODE1024_UID&token=$NODE1024_TOKEN" \
-  -X PUT \
-  -H "Content-Type: application/json" \
-  --data-raw @payload.json
+python3 scripts/update-node1024-rules.py \
+  --uid "$NODE1024_UID" \
+  --token "$NODE1024_TOKEN" \
+  --rule "DOMAIN,example.com,DIRECT"
 ```
 
 使用已知 API 契约，不要从配置订阅地址推导接口路径。
@@ -33,10 +43,17 @@ curl "$NODE1024_BASE_URL/api/user?uid=$NODE1024_UID&token=$NODE1024_TOKEN" \
 
 用户提供的契约是 `PUT /api/user?uid=...&token=...`，body 中包含完整 `config`。因此默认认为 PUT 可能替换整个配置。
 
+实测注意事项：
+
+- `GET /api/user?...` 返回 `{ code, msg, data }`，当前规则字段是 `data.ruleOverwrite`。
+- `PUT /api/user?...` 不能只传 `{ config: { ruleOverwrite } }`；服务端会因缺少 `config.accessToken` 返回 `400 Invalid request body`。
+- 安全写法是把 GET 的 `data` 完整复制到 PUT 的 `config`，只替换 `config.ruleOverwrite`。
+- `scripts/update-node1024-rules.py` 已经实现这个合并逻辑；默认 dry-run，只有 `--apply` 才写入。
+
 安全做法：
 
 1. 先查是否有 GET 接口能取回当前用户配置。
-2. 如果能取回，保留原有 `config` 的所有字段，只替换 `config.ruleOverwrite`。
+2. 如果能取回，保留原有 `data` 的所有字段，作为 PUT body 的 `config`，只替换 `config.ruleOverwrite`。
 3. 如果不能取回，让用户提供当前完整 config，或明确确认可以用当前 payload 覆盖。
 4. 不要发送只含 `ruleOverwrite` 的极简 body，除非服务端文档明确它会 merge。
 
@@ -48,7 +65,7 @@ curl "$NODE1024_BASE_URL/api/user?uid=$NODE1024_UID&token=$NODE1024_TOKEN" \
 2. 目标策略组：必须来自当前配置，不能自造。
 3. 规则匹配策略：`DOMAIN`、`DOMAIN-SUFFIX`、`PROCESS-NAME` 或用户确认的 `DOMAIN-KEYWORD`。
 4. 本次配置订阅地址：用户本次提供或明确确认，展示时脱敏 token。
-5. 修改字段：默认只改 `config.ruleOverwrite`，保留其它配置字段。
+5. 修改字段：默认只改 `ruleOverwrite`，保留其它配置字段。
 
 ## ruleOverwrite 格式
 
@@ -88,3 +105,26 @@ curl "$NODE1024_BASE_URL/api/user?uid=$NODE1024_UID&token=$NODE1024_TOKEN" \
 - 没有完整 token、完整配置订阅地址、Clash 订阅 URL、节点密码。
 - 域名不包含协议、路径、查询参数。
 - 规则策略组在当前配置中存在，或明确标注需要用户替换。
+
+## 推荐脚本
+
+```bash
+# dry-run：展示合并后的规则，不写远端
+python3 scripts/update-node1024-rules.py \
+  --uid "$NODE1024_UID" \
+  --token "$NODE1024_TOKEN" \
+  --rule "DOMAIN-SUFFIX,example.com,[类]-海外AI🤖"
+
+# apply：写入远端
+python3 scripts/update-node1024-rules.py \
+  --uid "$NODE1024_UID" \
+  --token "$NODE1024_TOKEN" \
+  --rule "DOMAIN-SUFFIX,example.com,[类]-海外AI🤖" \
+  --apply
+
+# verify：读远端用户配置、生成订阅、本地运行规则
+python3 scripts/verify-rules.py \
+  --uid "$NODE1024_UID" \
+  --token "$NODE1024_TOKEN" \
+  --keyword example.com
+```

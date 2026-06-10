@@ -23,6 +23,17 @@ Mihomo API 请求使用：
 Authorization: Bearer ${secret}
 ```
 
+有些客户端不会在配置文件里写 HTTP 控制器。例如 Clash Party / mihomo-party 可能通过进程参数暴露 Unix socket：
+
+```bash
+ps aux | rg mihomo
+# ... mihomo ... -ext-ctl-unix /tmp/mihomo-party-501-667.sock
+
+curl --unix-socket /tmp/mihomo-party-501-667.sock http://127.0.0.1/connections
+```
+
+此时把控制器记为 `unix:/tmp/mihomo-party-501-667.sock`，可直接传给本 Skill 的脚本。
+
 常用端点：
 
 | 端点 | 用途 |
@@ -71,3 +82,11 @@ rules:
 - 不要输出 `secret`、订阅 URL token、节点密码或完整代理配置。
 - 需要打开 `debug` 日志时，提醒用户完成后恢复，避免日志过大或泄漏。
 - 修改规则后，建议关闭旧连接或重启内核，否则已有连接可能继续沿用旧策略。
+
+## 本 Skill 脚本
+
+```bash
+python3 scripts/inspect-runtime.py
+python3 scripts/collect-evidence.py --controller unix:/tmp/mihomo.sock --keywords trae,mchost
+python3 scripts/verify-rules.py --controller unix:/tmp/mihomo.sock --config-path "$HOME/Library/Application Support/mihomo-party/work/config.yaml" --reload --keyword trae.ai
+```
