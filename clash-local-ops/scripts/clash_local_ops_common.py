@@ -151,10 +151,11 @@ def fetch_controller_json(controller: str, endpoint: str, timeout: int = 15) -> 
     return read_json_url(f"{base}/{endpoint.lstrip('/')}", timeout=timeout)
 
 
-def patch_controller_config(controller: str, config_path: Path, timeout: int = 15) -> int:
+def patch_controller_config(controller: str, config_path: Path, timeout: int = 15, force: bool = False) -> int:
     payload = json.dumps({"path": str(config_path)}, ensure_ascii=False)
     if controller.startswith("unix:"):
         socket_path = controller.removeprefix("unix:")
+        url = "http://127.0.0.1/configs?force=true" if force else "http://127.0.0.1/configs"
         result = subprocess.run(
             [
                 "curl",
@@ -166,7 +167,7 @@ def patch_controller_config(controller: str, config_path: Path, timeout: int = 1
                 socket_path,
                 "-X",
                 "PATCH",
-                "http://127.0.0.1/configs",
+                url,
                 "-H",
                 "Content-Type: application/json",
                 "--data",
@@ -214,6 +215,114 @@ def node1024_user_url(base_url: str, uid: str, token: str) -> str:
 def node1024_subscription_url(base_url: str, uid: str, token: str) -> str:
     query = urllib.parse.urlencode({"uid": uid, "token": token})
     return f"{base_url.rstrip('/')}/api/x?{query}"
+
+
+def find_node1024_profile(profile_yaml_text: str) -> dict[str, str]:
+    """Return the current node.1024.hair profile item and credentials."""
+
+    current = find_scalar(profile_yaml_text, "current")
+    item = find_profile_item(profile_yaml_text, current) if current else None
+    if not item or "node.1024.hair" not in item.get("url", ""):
+        item = find_first_node1024_profile_item(profile_yaml_text)
+    if not item:
+        raise ValueError("No node.1024.hair profile found")
+
+    url = item.get("url", "")
+    parsed = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qs(parsed.query)
+    uid = query.get("uid", [""])[0]
+    token = query.get("token", [""])[0]
+    if not uid or not token:
+        raise ValueError("node.1024.hair profile URL is missing uid or token")
+
+    return {
+        "id": item.get("id", ""),
+        "name": item.get("name", ""),
+        "type": item.get("type", ""),
+        "subscription_url": url,
+        "uid": uid,
+        "token": token,
+    }
+
+
+def find_latest_unix_controller(process_text: str) -> str | None:
+    """Return the last active Mihomo unix controller in ps output."""
+
+    controller: str | None = None
+    for line in process_text.splitlines():
+        if not is_runtime_process_line(line):
+            continue
+        socket_match = re.search(r"-ext-ctl-unix\s+(\S+)", line)
+        if socket_match:
+            controller = f"unix:{socket_match.group(1)}"
+    return controller
+
+
+def find_scalar(text: str, key: str) -> str | None:
+    match = re.search(rf"^{re.escape(key)}:\s*(.+)$", text, flags=re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def find_profile_item(text: str, profile_id: str | None) -> dict[str, str] | None:
+    if not profile_id:
+        return None
+    current_item: dict[str, str] | None = None
+    for line in text.splitlines():
+        id_match = re.match(r"\s*-\s+id:\s*(.+)", line)
+        if id_match:
+            if current_item and current_item.get("id") == profile_id:
+                return current_item
+            current_item = {"id": id_match.group(1).strip()}
+            continue
+        if current_item is None:
+            continue
+        field_match = re.match(r"\s{4}([A-Za-z][A-Za-z0-9_-]*):\s*(.*)", line)
+        if field_match:
+            current_item[field_match.group(1)] = field_match.group(2).strip()
+    if current_item and current_item.get("id") == profile_id:
+        return current_item
+    return None
+
+
+def find_first_node1024_profile_item(text: str) -> dict[str, str] | None:
+    current_item: dict[str, str] | None = None
+    for line in text.splitlines():
+        id_match = re.match(r"\s*-\s+id:\s*(.+)", line)
+        if id_match:
+            if current_item and "node.1024.hair" in current_item.get("url", ""):
+                return current_item
+            current_item = {"id": id_match.group(1).strip()}
+            continue
+        if current_item is None:
+            continue
+        field_match = re.match(r"\s{4}([A-Za-z][A-Za-z0-9_-]*):\s*(.*)", line)
+        if field_match:
+            current_item[field_match.group(1)] = field_match.group(2).strip()
+    if current_item and "node.1024.hair" in current_item.get("url", ""):
+        return current_item
+    return None
+
+
+def summarize_verification_state(
+    *,
+    remote_ok: bool,
+    subscription_ok: bool,
+    local_ok: bool,
+    runtime_ok: bool,
+    has_local_check: bool,
+    has_runtime_check: bool,
+) -> dict[str, str | None]:
+    if not remote_ok:
+        return {"status": "remote_stale", "recommended_next_action": "apply_rule_overwrite"}
+    if not subscription_ok:
+        return {"status": "subscription_stale", "recommended_next_action": "check_node1024_subscription_generation"}
+    if has_local_check and not local_ok:
+        return {"status": "local_stale", "recommended_next_action": "refresh_local_config"}
+    if has_runtime_check and not runtime_ok:
+        return {"status": "runtime_stale", "recommended_next_action": "restart_clash_party"}
+    if has_local_check and has_runtime_check:
+        return {"status": "ready", "recommended_next_action": None}
+    return {"status": "remote_ready", "recommended_next_action": "refresh_local_config"}
 
 
 def is_runtime_process_line(line: str) -> bool:

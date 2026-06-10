@@ -15,6 +15,7 @@ from clash_local_ops_common import (
     node1024_user_url,
     patch_controller_config,
     read_json_url,
+    summarize_verification_state,
 )
 
 
@@ -39,17 +40,23 @@ def main() -> None:
     rule_overwrite = user_response.get("data", {}).get("ruleOverwrite", "")
     subscription_text = read_text_url(subscription_url)
 
+    remote_ok = contains_all(rule_overwrite, keywords)
+    subscription_ok = contains_all(subscription_text, keywords)
+    local_ok = False
+    runtime_ok = False
+
     result: dict[str, object] = {
         "user_url": mask_url(user_url),
         "subscription_url": mask_url(subscription_url),
-        "remote_rule_overwrite_matches": contains_all(rule_overwrite, keywords),
-        "subscription_matches": contains_all(subscription_text, keywords),
+        "remote_rule_overwrite_matches": remote_ok,
+        "subscription_matches": subscription_ok,
     }
 
     if args.config_path:
         local_text = args.config_path.read_text(encoding="utf-8", errors="replace") if args.config_path.exists() else ""
+        local_ok = contains_all(local_text, keywords)
         result["local_config_path"] = str(args.config_path)
-        result["local_config_matches"] = contains_all(local_text, keywords)
+        result["local_config_matches"] = local_ok
 
     if args.controller:
         if args.reload:
@@ -58,9 +65,11 @@ def main() -> None:
             result["reload_status"] = patch_controller_config(args.controller, args.config_path)
         rules = fetch_controller_json(args.controller, "/rules")
         matched_rules = []
+        matched_payload_text = []
         for rule in rules.get("rules", []):
             payload = str(rule.get("payload") or "")
             if not keywords or any(keyword in payload.lower() for keyword in keywords):
+                matched_payload_text.append(payload)
                 matched_rules.append(
                     {
                         "type": rule.get("type"),
@@ -69,7 +78,17 @@ def main() -> None:
                     }
                 )
         result["runtime_rules"] = matched_rules
-        result["runtime_rules_match"] = bool(matched_rules) if keywords else True
+        runtime_ok = contains_all("\n".join(matched_payload_text), keywords)
+        result["runtime_rules_match"] = runtime_ok
+
+    result["state"] = summarize_verification_state(
+        remote_ok=remote_ok,
+        subscription_ok=subscription_ok,
+        local_ok=local_ok,
+        runtime_ok=runtime_ok,
+        has_local_check=bool(args.config_path),
+        has_runtime_check=bool(args.controller),
+    )
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
