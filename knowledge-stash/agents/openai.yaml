@@ -1,0 +1,7 @@
+interface:
+  display_name: "知识沉淀"
+  short_description: "把 AI 对话整理成可复用的知识库文章"
+  default_prompt: "使用 $knowledge-stash 把这次对话整理成一篇可独立阅读的知识库文章。"
+
+policy:
+  allow_implicit_invocation: true
