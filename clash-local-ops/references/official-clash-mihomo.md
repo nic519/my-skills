@@ -83,6 +83,23 @@ rules:
 - 需要打开 `debug` 日志时，提醒用户完成后恢复，避免日志过大或泄漏。
 - 修改规则后，建议关闭旧连接或重启内核，否则已有连接可能继续沿用旧策略。
 
+## 已命中规则但仍慢
+
+当 `/connections` 显示目标域名已经命中正确策略组，且 `verify-rules.py` 或 dry-run 已确认 `ruleOverwrite` 在远端、订阅、本地运行规则中都存在时，不要继续重复添加同一条规则。下一步应检查 selector 当前选择：
+
+```bash
+curl --unix-socket /tmp/mihomo-party-501-667.sock \
+  http://127.0.0.1/proxies/%5B%E7%B1%BB%5D-%E6%B5%B7%E5%A4%96AI%F0%9F%A4%96
+```
+
+关注响应中的：
+
+- `now`：当前 selector 选择的自动组或节点。
+- `all`：可切换的已有组和节点。
+- `/connections` 的 `chain`：实际链路，例如 `某节点 > [自动]-新加坡 > [类]-海外AI`。
+
+如果应用日志是 `stream timeout`、`context deadline exceeded`、`network request failed`，而普通短请求或配置请求又能成功，优先怀疑当前出口对长连接、SSE、流式响应或目标 CDN 不稳。用户可先在客户端 UI 中把该策略组切到另一个已有出口；只有用户明确要求自动切换，才考虑调用 `PUT /proxies/{group}`。
+
 ## 本 Skill 脚本
 
 ```bash

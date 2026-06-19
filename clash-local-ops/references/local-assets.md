@@ -49,3 +49,27 @@ tail -n 300 ~/.config/clash-verge/logs/<latest>.log
 4. 搜索关键词：`timeout`、`error`、`connect`、`rule`、`match`、`anthropic`、`github`、`cursor`、`trae`、`mchost`、`ide`。
 5. 结论必须区分两层：应用是否进入 Clash/Mihomo 入口；进入后最终 `chains` 是 `DIRECT` 还是代理组。
 6. 只把可解释的域名写成规则；不要把 IP、临时 CDN 子域或带签名参数的 URL 直接写入规则。
+
+## Trae Git Commit 生成异常
+
+当用户说 Trae 显示“Git Commit 内容生成异常，请稍后重试”时，先查 Trae 自己的近期日志，不要只查 Git 或 Clash。
+
+常见路径：
+
+```bash
+find "$HOME/Library/Application Support/Trae/logs" -type f \
+  \( -name '*.log' -o -name '*.txt' \) -mtime -2 -print
+```
+
+重点文件和证据：
+
+- `window*/exthost/vscode.git/Trae Git.log`：查 `start generate commit message` 和 `Error: stream timeout`。如果每次启动生成后约 20-30 秒超时，说明 Git 扩展的流式生成链路断了。
+- `Modular/ai-agent_*_stdout.log`：查 `function: "git_ai"`、`coresg-normal.trae.ai`、`mchost.guru`、`network request failed`、`context deadline exceeded`、`code=-100`。
+- `network-shared.log` / `window*/network.log`：辅助确认 `net::ERR_CONNECTION_CLOSED` 或普通 fetch 失败，但不要只凭这些泛化错误下结论。
+
+诊断顺序：
+
+1. 用 `collect-evidence.py --keywords trae,mchost,coresg` 看 Trae 请求是否进入 Clash/Mihomo，以及命中的 `rule`、`rulePayload`、`chain`。
+2. 用 `apply-and-refresh-rules.py` dry-run 或 `verify-rules.py` 确认 `trae.ai`、`traeapi.us`、`mchost.guru` 等规则是否已在远端、订阅、本地运行规则中生效。
+3. 如果规则已生效且连接已经命中 AI 策略组，问题通常不是缺规则，而是该策略组当前 `now` 出口对 Trae 的长连接/流式响应不稳定。此时建议用户在 Clash Party 里把 AI 策略组从当前自动组或节点切到另一个已有出口，再重试 Trae。
+4. 只有当域名仍然 `DIRECT`、命中错误策略组，或出现新的稳定域名族时，才回到 `ruleOverwrite` 写入流程。
