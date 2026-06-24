@@ -249,7 +249,7 @@ class RuntimeProcessTests(unittest.TestCase):
     def test_runtime_process_filter_skips_this_skill_scripts(self):
         """运行时筛选应排除本 skill 的脚本命令行。"""
 
-        self.assertFalse(is_runtime_process_line("/bin/zsh -c python3 clash-local-ops/scripts/inspect-runtime.py"))
+        self.assertFalse(is_runtime_process_line("/bin/zsh -c python3 clash-diagnosis/scripts/inspect-runtime.py"))
         self.assertTrue(is_runtime_process_line("/Applications/Clash Party.app/Contents/Resources/sidecar/mihomo -ext-ctl-unix /tmp/mihomo.sock"))
 
     def test_find_latest_unix_controller_uses_active_mihomo_socket(self):

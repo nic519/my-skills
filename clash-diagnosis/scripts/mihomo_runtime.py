@@ -128,7 +128,7 @@ def is_runtime_process_line(line: str) -> bool:
     """判断 ps 行是否像真实 Clash/Mihomo 运行时进程，并排除本工具自身。"""
 
     lowered = line.lower()
-    if "clash-local-ops/scripts/" in lowered:
+    if "clash-diagnosis/scripts/" in lowered:
         return False
     if " rg " in lowered or lowered.endswith(" rg"):
         return False

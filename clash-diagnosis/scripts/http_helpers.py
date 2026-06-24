@@ -16,7 +16,7 @@ SENSITIVE_QUERY_KEYS = {"token", "access_token", "key", "owO", "owo"}
 def read_json_url(url: str, timeout: int = 30) -> dict[str, Any]:
     """读取 JSON URL，并在 HTTP 错误里使用脱敏后的地址。"""
 
-    request = urllib.request.Request(url, headers={"User-Agent": "clash-local-ops/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "clash-diagnosis/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
@@ -28,7 +28,7 @@ def read_json_url(url: str, timeout: int = 30) -> dict[str, Any]:
 def read_text_url(url: str, timeout: int = 30) -> str:
     """读取文本 URL，主要用于获取生成后的 Clash 订阅配置。"""
 
-    request = urllib.request.Request(url, headers={"User-Agent": "clash-local-ops/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "clash-diagnosis/1.0"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="replace")
 
@@ -41,7 +41,7 @@ def put_json_url(url: str, payload: dict[str, Any], timeout: int = 30) -> dict[s
         url,
         data=data,
         method="PUT",
-        headers={"Content-Type": "application/json", "User-Agent": "clash-local-ops/1.0"},
+        headers={"Content-Type": "application/json", "User-Agent": "clash-diagnosis/1.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

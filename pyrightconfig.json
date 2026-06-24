@@ -1,4 +1,4 @@
 {
-  "include": ["clash-local-ops"],
-  "extraPaths": ["clash-local-ops/scripts"]
+  "include": ["clash-diagnosis"],
+  "extraPaths": ["clash-diagnosis/scripts"]
 }

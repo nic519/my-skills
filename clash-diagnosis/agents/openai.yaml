@@ -1,7 +1,7 @@
 interface:
   display_name: "clash 问题排查"
   short_description: "排查本机 Clash/Mihomo 慢请求、错分流和策略组命中问题"
-  default_prompt: "使用 $clash-local-ops 帮我排查本机 Clash/Mihomo 行为证据，确认域名、进程、命中规则和策略组。"
+  default_prompt: "使用 $clash-diagnosis 帮我排查本机 Clash/Mihomo 行为证据，确认域名、进程、命中规则和策略组。"
 
 policy:
   allow_implicit_invocation: true
