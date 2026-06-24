@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import sys
 import tempfile
 import unittest
@@ -9,20 +10,24 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 SKILL_PATH = Path(__file__).resolve().parents[1] / "SKILL.md"
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from clash_local_ops_common import (  # noqa: E402
-    build_node1024_put_payload,
-    collect_matching_connections,
-    contains_all_keywords,
-    find_latest_unix_controller,
-    find_node1024_profile,
-    is_runtime_process_line,
-    mask_url,
-    merge_rule_overwrite,
-    read_rule_file,
-    read_text_url,
-    run_text,
-    summarize_verification_state,
-)
+from clash_rules import merge_rule_overwrite, read_rule_file  # noqa: E402
+from http_helpers import mask_url, read_text_url  # noqa: E402
+from local_commands import run_text  # noqa: E402
+from mihomo_runtime import collect_matching_connections, find_latest_unix_controller, is_runtime_process_line  # noqa: E402
+from node1024_config import build_node1024_put_payload  # noqa: E402
+from profile_config import find_node1024_profile, find_profile_item_by_id, find_yaml_scalar  # noqa: E402
+from verification_state import summarize_verification_state  # noqa: E402
+
+
+def load_script_module(filename: str, module_name: str):
+    """按文件名加载带连字符的 CLI 脚本，便于测试其中的纯函数。"""
+
+    spec = importlib.util.spec_from_file_location(module_name, SCRIPT_DIR / filename)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load {filename}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class RuleOverwriteTests(unittest.TestCase):
@@ -244,6 +249,22 @@ class RuntimeProcessTests(unittest.TestCase):
 class MihomoPartyProfileTests(unittest.TestCase):
     """验证 Clash Party profile.yaml 中 node.1024.hair 配置的解析。"""
 
+    def test_profile_helpers_use_yaml_specific_names(self):
+        """profile 解析 helper 的名称应清楚表达 YAML 标量和按 id 查找条目。"""
+
+        text = "\n".join(
+            [
+                "current: abc123",
+                "items:",
+                "  - id: abc123",
+                "    name: BIGME.yaml",
+                "    type: remote",
+            ]
+        )
+
+        self.assertEqual(find_yaml_scalar(text, "current"), "abc123")
+        self.assertEqual(find_profile_item_by_id(text, "abc123")["name"], "BIGME.yaml")
+
     def test_find_node1024_profile_returns_current_profile_credentials(self):
         """优先返回 current 指向的 node.1024.hair profile 和凭据。"""
 
@@ -302,6 +323,52 @@ class VerificationSummaryTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "remote_ready")
         self.assertEqual(summary["recommended_next_action"], "refresh_local_config")
+
+
+class CliResultBuilderTests(unittest.TestCase):
+    """验证 CLI 脚本里的结果组装逻辑可以脱离网络和本机运行时独立测试。"""
+
+    def test_verify_rules_builds_layered_result_without_io(self):
+        """verify-rules 的 main 之外应有纯函数负责四层校验结果。"""
+
+        module = load_script_module("verify-rules.py", "verify_rules_script")
+        result = module.build_verification_result(
+            user_url="https://node.1024.hair/api/user?uid=33&token=test",
+            subscription_url="https://node.1024.hair/api/x?uid=33&token=test",
+            rule_overwrite="+rules:\n  - DOMAIN,api.example.com,DIRECT",
+            subscription_text="rules:\n  - DOMAIN,api.example.com,DIRECT",
+            keywords=["api.example.com"],
+            local_text="rules:\n  - DOMAIN,api.example.com,DIRECT",
+            local_config_path=Path("/tmp/config.yaml"),
+            runtime_rules_payload={"rules": [{"type": "Domain", "payload": "api.example.com", "proxy": "DIRECT"}]},
+        )
+
+        self.assertEqual(result["user_url"], "https://node.1024.hair/api/user?uid=33&token=***")
+        self.assertTrue(result["remote_rule_overwrite_matches"])
+        self.assertTrue(result["runtime_rules_match"])
+        self.assertEqual(result["state"]["status"], "ready")
+
+    def test_apply_and_refresh_builds_result_without_io(self):
+        """apply-and-refresh 的状态输出应由可测试函数组装。"""
+
+        module = load_script_module("apply-and-refresh-rules.py", "apply_and_refresh_script")
+        result = module.build_apply_result(
+            user_url="https://node.1024.hair/api/user?uid=33&token=test",
+            subscription_url="https://node.1024.hair/api/x?uid=33&token=test",
+            mode="dry-run",
+            profile_id="abc123",
+            rule_overwrite="+rules:\n  - DOMAIN,api.example.com,DIRECT",
+            remote_ok=True,
+            subscription_ok=True,
+            local_ok=False,
+            runtime_ok=False,
+            has_local_check=False,
+            has_runtime_check=False,
+        )
+
+        self.assertEqual(result["profile_id"], "abc123")
+        self.assertEqual(result["subscription_url"], "https://node.1024.hair/api/x?uid=33&token=***")
+        self.assertEqual(result["state"]["status"], "remote_ready")
 
 
 if __name__ == "__main__":

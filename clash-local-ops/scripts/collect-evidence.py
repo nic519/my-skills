@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from clash_local_ops_common import collect_matching_connections, fetch_controller_json
+from mihomo_runtime import collect_matching_connections, fetch_controller_json
 
 
 def main() -> None:

@@ -8,7 +8,10 @@ import json
 import re
 from pathlib import Path
 
-from clash_local_ops_common import find_profile_item, find_scalar, is_runtime_process_line, mask_url, run_text
+from http_helpers import mask_url
+from local_commands import run_text
+from mihomo_runtime import is_runtime_process_line
+from profile_config import find_profile_item_by_id, find_yaml_scalar
 
 
 def main() -> None:
@@ -73,10 +76,10 @@ def inspect_mihomo_party(root: Path) -> dict[str, object]:
         return result
 
     text = profile_path.read_text(encoding="utf-8", errors="replace")
-    current = find_scalar(text, "current")
+    current = find_yaml_scalar(text, "current")
     result["current_profile_id"] = current
     if current:
-        item = find_profile_item(text, current)
+        item = find_profile_item_by_id(text, current)
         if item:
             url = item.get("url")
             result["current_profile"] = {

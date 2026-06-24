@@ -12,28 +12,24 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from clash_local_ops_common import (
-    build_node1024_put_payload,
-    contains_all_keywords,
-    fetch_controller_json,
-    find_latest_unix_controller,
-    find_node1024_profile,
-    mask_url,
-    merge_rule_overwrite,
-    node1024_subscription_url,
-    node1024_user_url,
-    patch_controller_config,
-    put_json_url,
-    read_json_url,
-    read_rule_file,
-    read_text_url,
-    run_text,
-    summarize_verification_state,
-)
+from clash_rules import merge_rule_overwrite, read_rule_file
+from http_helpers import mask_url, put_json_url, read_json_url, read_text_url
+from local_commands import run_text
+from mihomo_runtime import fetch_controller_json, find_latest_unix_controller, patch_controller_config
+from node1024_config import build_node1024_put_payload, node1024_subscription_url, node1024_user_url
+from profile_config import find_node1024_profile
+from verification_state import contains_all_keywords, summarize_verification_state
 
 
 def main() -> None:
-    """串联远端写入、订阅验证、本地刷新、重启和运行时规则校验。"""
+    """解析参数、执行流程并打印 JSON 结果。"""
+
+    args = parse_args()
+    print(json.dumps(run_apply(args), ensure_ascii=False, indent=2))
+
+
+def parse_args() -> argparse.Namespace:
+    """解析 apply-and-refresh 的命令行参数。"""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.environ.get("NODE1024_BASE_URL", "https://node.1024.hair"))
@@ -47,7 +43,11 @@ def main() -> None:
     parser.add_argument("--refresh-local", action="store_true", help="Refresh Clash Party profile/work config from generated subscription")
     parser.add_argument("--restart-app", action="store_true", help="Restart Clash Party after refreshing local config")
     parser.add_argument("--app-name", default="Clash Party")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def run_apply(args: argparse.Namespace) -> dict[str, object]:
+    """串联远端写入、订阅验证、本地刷新、重启和运行时规则校验。"""
 
     profile_path = args.app_root / "profile.yaml"
     profile = find_node1024_profile(profile_path.read_text(encoding="utf-8", errors="replace"))
@@ -62,17 +62,11 @@ def main() -> None:
     merged = merge_rule_overwrite(response.get("data", {}).get("ruleOverwrite", ""), rules)
     payload = build_node1024_put_payload(response, merged)
 
-    result: dict[str, object] = {
-        "user_url": mask_url(user_url),
-        "mode": "apply" if args.apply else "dry-run",
-        "profile_id": profile.get("id"),
-        "ruleOverwrite": merged,
-    }
-
     current_rule_overwrite = response.get("data", {}).get("ruleOverwrite", "")
+    put_summary = None
     if args.apply:
         put_response = put_json_url(user_url, payload)
-        result["response"] = {
+        put_summary = {
             "code": put_response.get("code"),
             "msg": put_response.get("msg"),
         }
@@ -87,42 +81,110 @@ def main() -> None:
     runtime_ok = False
     controller = args.controller or current_controller()
 
-    result["subscription_url"] = mask_url(subscription_url)
-    result["remote_rule_overwrite_matches"] = remote_ok
-    result["subscription_matches"] = subscription_ok
-
     config_path = args.app_root / "work" / "config.yaml"
+    local_refresh = None
+    reload_status = None
     if args.refresh_local:
         if not subscription_ok:
             raise SystemExit("Generated subscription does not contain all requested rules; refusing local refresh")
-        result["local_refresh"] = refresh_local_configs(args.app_root, profile, subscription_text)
+        local_refresh = refresh_local_configs(args.app_root, profile, subscription_text)
         local_ok = contains_all_keywords(config_path.read_text(encoding="utf-8", errors="replace"), keywords)
-        result["local_config_path"] = str(config_path)
-        result["local_config_matches"] = local_ok
         if controller:
-            result["reload_status"] = patch_controller_config(controller, config_path, force=True)
+            reload_status = patch_controller_config(controller, config_path, force=True)
 
+    controller_after_restart = None
     if args.restart_app:
         restart_app(args.app_name)
         controller = wait_for_controller(previous=controller)
-        result["controller_after_restart"] = controller
+        controller_after_restart = controller
 
+    runtime_rules = None
     if controller:
         runtime_rules, runtime_ok = runtime_rule_matches(controller, keywords)
-        result["controller"] = controller
-        result["runtime_rules"] = runtime_rules
-        result["runtime_rules_match"] = runtime_ok
 
-    result["state"] = summarize_verification_state(
+    result = build_apply_result(
+        user_url=user_url,
+        subscription_url=subscription_url,
+        mode="apply" if args.apply else "dry-run",
+        profile_id=profile.get("id"),
+        rule_overwrite=merged,
         remote_ok=remote_ok,
         subscription_ok=subscription_ok,
         local_ok=local_ok,
         runtime_ok=runtime_ok,
         has_local_check=args.refresh_local,
         has_runtime_check=bool(controller),
+        response=put_summary,
+        local_refresh=local_refresh,
+        local_config_path=config_path if args.refresh_local else None,
+        local_config_matches=local_ok if args.refresh_local else None,
+        reload_status=reload_status,
+        controller_after_restart=controller_after_restart,
+        controller=controller,
+        runtime_rules=runtime_rules,
     )
+    return result
 
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+def build_apply_result(
+    *,
+    user_url: str,
+    subscription_url: str,
+    mode: str,
+    profile_id: str | None,
+    rule_overwrite: str,
+    remote_ok: bool,
+    subscription_ok: bool,
+    local_ok: bool,
+    runtime_ok: bool,
+    has_local_check: bool,
+    has_runtime_check: bool,
+    response: dict[str, object] | None = None,
+    local_refresh: dict[str, object] | None = None,
+    local_config_path: Path | None = None,
+    local_config_matches: bool | None = None,
+    reload_status: int | None = None,
+    controller_after_restart: str | None = None,
+    controller: str | None = None,
+    runtime_rules: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    """组装 apply-and-refresh 输出结果，不执行网络、本地文件或进程操作。"""
+
+    result: dict[str, object] = {
+        "user_url": mask_url(user_url),
+        "mode": mode,
+        "profile_id": profile_id,
+        "ruleOverwrite": rule_overwrite,
+        "subscription_url": mask_url(subscription_url),
+        "remote_rule_overwrite_matches": remote_ok,
+        "subscription_matches": subscription_ok,
+    }
+    if response is not None:
+        result["response"] = response
+    if local_refresh is not None:
+        result["local_refresh"] = local_refresh
+    if local_config_path is not None:
+        result["local_config_path"] = str(local_config_path)
+    if local_config_matches is not None:
+        result["local_config_matches"] = local_config_matches
+    if reload_status is not None:
+        result["reload_status"] = reload_status
+    if controller_after_restart is not None:
+        result["controller_after_restart"] = controller_after_restart
+    if controller is not None:
+        result["controller"] = controller
+    if runtime_rules is not None:
+        result["runtime_rules"] = runtime_rules
+        result["runtime_rules_match"] = runtime_ok
+    result["state"] = summarize_verification_state(
+        remote_ok=remote_ok,
+        subscription_ok=subscription_ok,
+        local_ok=local_ok,
+        runtime_ok=runtime_ok,
+        has_local_check=has_local_check,
+        has_runtime_check=has_runtime_check,
+    )
+    return result
 
 
 def collect_rules(raw_rules: list[str], rule_file: Path | None) -> list[str]:

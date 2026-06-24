@@ -8,15 +8,9 @@ import json
 import os
 from pathlib import Path
 
-from clash_local_ops_common import (
-    build_node1024_put_payload,
-    mask_url,
-    merge_rule_overwrite,
-    node1024_user_url,
-    put_json_url,
-    read_json_url,
-    read_rule_file,
-)
+from clash_rules import merge_rule_overwrite, read_rule_file
+from http_helpers import mask_url, put_json_url, read_json_url
+from node1024_config import build_node1024_put_payload, node1024_user_url
 
 
 def main() -> None:
