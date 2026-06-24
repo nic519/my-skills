@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+SKILL_PATH = Path(__file__).resolve().parents[1] / "SKILL.md"
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from clash_local_ops_common import (  # noqa: E402
@@ -53,6 +54,24 @@ class RuleOverwriteTests(unittest.TestCase):
         result = merge_rule_overwrite("", ["DOMAIN,example.com,DIRECT"])
 
         self.assertEqual(result, "+rules:\n  - DOMAIN,example.com,DIRECT")
+
+
+class SkillPositioningTests(unittest.TestCase):
+    def test_skill_is_clash_diagnosis_first_not_node1024_writeback_first(self):
+        text = SKILL_PATH.read_text(encoding="utf-8")
+        frontmatter = text.split("---", 2)[1]
+
+        self.assertIn("Use when diagnosing local Clash/Mihomo issues", frontmatter)
+        self.assertNotIn("turned into node.1024.hair personal rule overrides", frontmatter)
+        self.assertIn("以排查 Clash/Mihomo 问题为主", text)
+        self.assertIn("不要把写回 `node.1024.hair` 当成默认解决路径", text)
+
+    def test_node1024_writeback_requires_yaml_subscription_management_url(self):
+        text = SKILL_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("只有看到用户的 YAML/配置中包含", text)
+        self.assertIn("`node.1024.hair/config?uid=...&token=...`", text)
+        self.assertIn("才询问是否把 `ruleOverwrite` 写回 `node.1024.hair`", text)
 
 
 class Node1024PayloadTests(unittest.TestCase):
@@ -126,7 +145,7 @@ class RedactionTests(unittest.TestCase):
     def test_mask_url_redacts_token_without_encoding_mask(self):
         result = mask_url("https://node.1024.hair/api/x?uid=33&token=test")
 
-        self.assertEqual(result, "https://node.1024.hair/api/x?uid=33&token=test")
+        self.assertEqual(result, "https://node.1024.hair/api/x?uid=33&token=***")
 
 
 class RuntimeProcessTests(unittest.TestCase):
