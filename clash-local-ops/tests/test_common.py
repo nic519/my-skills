@@ -263,7 +263,9 @@ class MihomoPartyProfileTests(unittest.TestCase):
         )
 
         self.assertEqual(find_yaml_scalar(text, "current"), "abc123")
-        self.assertEqual(find_profile_item_by_id(text, "abc123")["name"], "BIGME.yaml")
+        profile_item = find_profile_item_by_id(text, "abc123")
+        assert profile_item is not None
+        self.assertEqual(profile_item["name"], "BIGME.yaml")
 
     def test_find_node1024_profile_returns_current_profile_credentials(self):
         """优先返回 current 指向的 node.1024.hair profile 和凭据。"""

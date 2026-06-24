@@ -11,6 +11,7 @@ import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from clash_rules import merge_rule_overwrite, read_rule_file
 from http_helpers import mask_url, put_json_url, read_json_url, read_text_url
@@ -63,7 +64,7 @@ def run_apply(args: argparse.Namespace) -> dict[str, object]:
     payload = build_node1024_put_payload(response, merged)
 
     current_rule_overwrite = response.get("data", {}).get("ruleOverwrite", "")
-    put_summary = None
+    put_summary: dict[str, Any] | None = None
     if args.apply:
         put_response = put_json_url(user_url, payload)
         put_summary = {
@@ -139,7 +140,7 @@ def build_apply_result(
     runtime_ok: bool,
     has_local_check: bool,
     has_runtime_check: bool,
-    response: dict[str, object] | None = None,
+    response: dict[str, Any] | None = None,
     local_refresh: dict[str, object] | None = None,
     local_config_path: Path | None = None,
     local_config_matches: bool | None = None,

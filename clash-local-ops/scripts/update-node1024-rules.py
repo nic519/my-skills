@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from clash_rules import merge_rule_overwrite, read_rule_file
 from http_helpers import mask_url, put_json_url, read_json_url
@@ -40,7 +41,7 @@ def main() -> None:
     merged = merge_rule_overwrite(current, new_rules)
     payload = build_node1024_put_payload(response, merged)
 
-    summary = {
+    summary: dict[str, Any] = {
         "url": mask_url(url),
         "mode": "apply" if args.apply else "dry-run",
         "ruleOverwrite": merged,

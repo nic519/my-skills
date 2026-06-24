@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from http_helpers import mask_url, read_json_url, read_text_url
 from mihomo_runtime import fetch_controller_json, patch_controller_config
@@ -84,7 +85,7 @@ def build_verification_result(
     keywords: list[str],
     local_text: str | None = None,
     local_config_path: Path | None = None,
-    runtime_rules_payload: dict[str, object] | None = None,
+    runtime_rules_payload: dict[str, Any] | None = None,
     reload_status: int | None = None,
 ) -> dict[str, object]:
     """组装 verify-rules 输出结果，不执行网络、文件或 controller 操作。"""
@@ -120,7 +121,7 @@ def build_verification_result(
 
 
 def summarize_runtime_rules(
-    runtime_rules_payload: dict[str, object] | None,
+    runtime_rules_payload: dict[str, Any] | None,
     keywords: list[str],
 ) -> tuple[list[dict[str, object]], bool]:
     """从 /rules 响应里筛选目标规则，并返回匹配摘要和全关键词命中状态。"""
@@ -129,7 +130,10 @@ def summarize_runtime_rules(
         return [], False
     matched_rules = []
     matched_payload_text = []
-    for rule in runtime_rules_payload.get("rules", []):
+    raw_rules = runtime_rules_payload.get("rules", [])
+    if not isinstance(raw_rules, list):
+        return [], False
+    for rule in raw_rules:
         if not isinstance(rule, dict):
             continue
         payload = str(rule.get("payload") or "")

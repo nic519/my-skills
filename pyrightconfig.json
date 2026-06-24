@@ -1,0 +1,4 @@
+{
+  "include": ["clash-local-ops"],
+  "extraPaths": ["clash-local-ops/scripts"]
+}
