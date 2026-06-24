@@ -8,6 +8,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 SKILL_PATH = Path(__file__).resolve().parents[1] / "SKILL.md"
+SKILL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from clash_rules import merge_rule_overwrite, read_rule_file  # noqa: E402
@@ -115,6 +116,24 @@ class SkillPositioningTests(unittest.TestCase):
         self.assertIn("只有看到用户的 YAML/配置中包含", text)
         self.assertIn("`node.1024.hair/config?uid=...&token=...`", text)
         self.assertIn("才询问是否把 `ruleOverwrite` 写回 `node.1024.hair`", text)
+
+    def test_markdown_docs_stay_generic_not_trae_procedural(self):
+        """Skill 和 references 应保持通用排查定位，不固化某个应用的专用流程。"""
+
+        doc_paths = [SKILL_PATH, *sorted((SKILL_ROOT / "references").glob("*.md"))]
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in doc_paths)
+
+        for forbidden in ["Trae", "trae", "mchost", "coresg", "git_ai", "Cursor"]:
+            self.assertNotIn(forbidden, combined)
+
+    def test_agent_metadata_is_diagnosis_first(self):
+        """slash 命令展示文案也应以 Clash/Mihomo 排查为主，而不是默认写回规则。"""
+
+        text = (SKILL_ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+        self.assertIn("Clash/Mihomo", text)
+        self.assertIn("排查", text)
+        self.assertNotIn("并写入 node.1024.hair", text)
 
 
 class Node1024PayloadTests(unittest.TestCase):

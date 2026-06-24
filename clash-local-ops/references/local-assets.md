@@ -20,6 +20,7 @@
 | Mihomo 通用目录 | `~/.config/mihomo` |
 | mihomo-party 配置 | `~/Library/Application Support/mihomo-party/mihomo.yaml` |
 | ClashX | `~/Library/Application Support/com.west2online.ClashX` |
+
 ## 应读文件
 
 - `config.yaml` / `mihomo.yaml`：查 `external-controller`、`secret`、`log-level`、`rules`、`proxy-groups`、`proxy-providers`。
@@ -28,15 +29,15 @@
 - `logs/*.log`：查 DNS、rule match、connect error、timeout、目标域名、策略组。
 - `cache.db`：只在用户要求且你知道 schema 时读取；否则先不用。
 
-## 慢 IDE 场景
+## 应用慢请求场景
 
-1. 记录用户说的 IDE 名称和进程名。不要只靠产品名猜域名。
+1. 记录用户说的应用名称、进程名、操作时间和失败现象。不要只靠产品名猜域名。
 2. 优先从控制器取连接证据：
 
 ```bash
 python3 scripts/collect-evidence.py \
   --controller unix:/tmp/mihomo-party-501-667.sock \
-  --keywords trae,mchost
+  --keywords example,api
 ```
 
 3. 若控制器不可用，再按 mtime 取最近日志：
@@ -46,30 +47,30 @@ ls -lt ~/.config/clash-verge/logs/*.log 2>/dev/null | head
 tail -n 300 ~/.config/clash-verge/logs/<latest>.log
 ```
 
-4. 搜索关键词：`timeout`、`error`、`connect`、`rule`、`match`、`anthropic`、`github`、`cursor`、`trae`、`mchost`、`ide`。
+4. 搜索关键词应来自用户报告的应用、进程、域名或错误文本。通用关键词可包含：`timeout`、`error`、`connect`、`rule`、`match`、`failed`、`deadline`、`reset`、`closed`。
 5. 结论必须区分两层：应用是否进入 Clash/Mihomo 入口；进入后最终 `chains` 是 `DIRECT` 还是代理组。
 6. 只把可解释的域名写成规则；不要把 IP、临时 CDN 子域或带签名参数的 URL 直接写入规则。
 
-## Trae Git Commit 生成异常
+## 应用日志补充证据
 
-当用户说 Trae 显示“Git Commit 内容生成异常，请稍后重试”时，先查 Trae 自己的近期日志，不要只查 Git 或 Clash。
+当 `/connections` 里没有足够证据，或用户报告的是应用内功能失败时，再查该应用自己的近期日志。应用日志用于补充时间窗口、目标域名、进程、错误类型和请求链路，不应替代 Clash/Mihomo 运行时证据。
 
-常见路径：
+常见查找方式：
 
 ```bash
-find "$HOME/Library/Application Support/Trae/logs" -type f \
+find "$HOME/Library/Application Support" "$HOME/.config" -maxdepth 5 -type f \
   \( -name '*.log' -o -name '*.txt' \) -mtime -2 -print
 ```
 
-重点文件和证据：
+优先提取这些证据：
 
-- `window*/exthost/vscode.git/Trae Git.log`：查 `start generate commit message` 和 `Error: stream timeout`。如果每次启动生成后约 20-30 秒超时，说明 Git 扩展的流式生成链路断了。
-- `Modular/ai-agent_*_stdout.log`：查 `function: "git_ai"`、`coresg-normal.trae.ai`、`mchost.guru`、`network request failed`、`context deadline exceeded`、`code=-100`。
-- `network-shared.log` / `window*/network.log`：辅助确认 `net::ERR_CONNECTION_CLOSED` 或普通 fetch 失败，但不要只凭这些泛化错误下结论。
+- 与用户操作时间接近的错误行。
+- 目标 host、URL 中的域名、进程名或功能模块名。
+- `stream timeout`、`context deadline exceeded`、`network request failed`、`connection reset/closed` 等网络错误。
+- 应用内请求成功但长连接、SSE 或流式响应失败的差异。
 
-诊断顺序：
+归纳时按通用判断收束：
 
-1. 用 `collect-evidence.py --keywords trae,mchost,coresg` 看 Trae 请求是否进入 Clash/Mihomo，以及命中的 `rule`、`rulePayload`、`chain`。
-2. 用 `apply-and-refresh-rules.py` dry-run 或 `verify-rules.py` 确认 `trae.ai`、`traeapi.us`、`mchost.guru` 等规则是否已在远端、订阅、本地运行规则中生效。
-3. 如果规则已生效且连接已经命中 AI 策略组，问题通常不是缺规则，而是该策略组当前 `now` 出口对 Trae 的长连接/流式响应不稳定。此时建议用户在 Clash Party 里把 AI 策略组从当前自动组或节点切到另一个已有出口，再重试 Trae。
-4. 只有当域名仍然 `DIRECT`、命中错误策略组，或出现新的稳定域名族时，才回到 `ruleOverwrite` 写入流程。
+1. 用 `collect-evidence.py --keywords ...` 看请求是否进入 Clash/Mihomo，以及命中的 `rule`、`rulePayload`、`chain`。
+2. 如果规则已生效且连接已经命中目标策略组，问题通常不是缺规则，而是当前出口对该应用或请求类型不稳定。
+3. 只有当域名仍然 `DIRECT`、命中错误策略组，或出现新的稳定域名族时，才进入规则补充或可选写回判断。

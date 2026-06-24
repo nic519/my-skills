@@ -39,7 +39,7 @@ curl --unix-socket /tmp/mihomo-party-501-667.sock http://127.0.0.1/connections
 | 端点 | 用途 |
 | --- | --- |
 | `GET /logs?level=info` 或 WebSocket | 实时日志；level 可用 `info`、`warning`、`error`、`debug` |
-| `GET /connections` 或 WebSocket | 实时连接；可用来确认 IDE 请求连到哪个域名和策略 |
+| `GET /connections` 或 WebSocket | 实时连接；可用来确认应用请求连到哪个域名和策略 |
 | `DELETE /connections` | 关闭全部连接；规则修改后可清旧连接 |
 | `GET /rules` | 查看运行中规则 |
 | `GET /proxies` | 查看代理和策略组 |
@@ -62,8 +62,7 @@ rules:
   - DOMAIN,api.example.com,PROXY
   - DOMAIN-SUFFIX,example.com,PROXY
   - DOMAIN-KEYWORD,example,PROXY
-  - PROCESS-NAME,Cursor,PROXY
-  - PROCESS-NAME,Trae,PROXY
+  - PROCESS-NAME,ExampleApp,PROXY
   - GEOIP,CN,DIRECT
   - MATCH,PROXY
 ```
@@ -96,7 +95,7 @@ curl --unix-socket /tmp/mihomo-party-501-667.sock \
 
 - `now`：当前 selector 选择的自动组或节点。
 - `all`：可切换的已有组和节点。
-- `/connections` 的 `chain`：实际链路，例如 `某节点 > [自动]-新加坡 > [类]-海外AI`。
+- `/connections` 的 `chain`：实际链路，例如 `某节点 > 自动选择 > PROXY`。
 
 如果应用日志是 `stream timeout`、`context deadline exceeded`、`network request failed`，而普通短请求或配置请求又能成功，优先怀疑当前出口对长连接、SSE、流式响应或目标 CDN 不稳。用户可先在客户端 UI 中把该策略组切到另一个已有出口；只有用户明确要求自动切换，才考虑调用 `PUT /proxies/{group}`。
 
@@ -104,6 +103,6 @@ curl --unix-socket /tmp/mihomo-party-501-667.sock \
 
 ```bash
 python3 scripts/inspect-runtime.py
-python3 scripts/collect-evidence.py --controller unix:/tmp/mihomo.sock --keywords trae,mchost
-python3 scripts/verify-rules.py --controller unix:/tmp/mihomo.sock --config-path "$HOME/Library/Application Support/mihomo-party/work/config.yaml" --reload --keyword trae.ai
+python3 scripts/collect-evidence.py --controller unix:/tmp/mihomo.sock --keywords example,api
+python3 scripts/verify-rules.py --controller unix:/tmp/mihomo.sock --config-path "$HOME/Library/Application Support/mihomo-party/work/config.yaml" --reload --keyword example.com
 ```

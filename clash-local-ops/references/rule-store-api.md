@@ -2,7 +2,7 @@
 
 ## 目标
 
-把从本机行为证据中提炼出的 Clash/Mihomo 规则写入用户的 `node.1024.hair` 个人配置，重点字段是 `ruleOverwrite`。
+当用户配置里明确出现 `node.1024.hair/config?uid=...&token=...` 这类订阅管理地址，并且用户确认要写回时，把从本机行为证据中提炼出的 Clash/Mihomo 规则写入用户的 `node.1024.hair` 个人配置，重点字段是 `ruleOverwrite`。
 
 实测接口形态：
 
@@ -24,7 +24,7 @@
 
 ## 默认接口模板
 
-不要把真实 token 写进 Skill。使用环境变量或用户当次提供并确认的值。历史对话中的示例 `node.1024.hair/config?uid=...&token=...` 只能说明格式，不能作为本次凭据。
+不要把真实 token 写进 Skill。使用环境变量或用户当次提供并确认的值。历史对话中的示例 `node.1024.hair/config?uid=...&token=...` 只能说明格式，不能作为本次凭据。没有看到用户 YAML/配置中的订阅管理地址时，不要主动进入本节写回流程。
 
 ```bash
 export NODE1024_BASE_URL="https://node.1024.hair"
@@ -89,13 +89,13 @@ python3 scripts/update-node1024-rules.py \
 
 ```yaml
 +rules:
-  - DOMAIN,api.service.example,[类]-海外AI🤖
-  - DOMAIN-SUFFIX,service-cdn.example,[类]-海外AI🤖
+  - DOMAIN,api.service.example,PROXY
+  - DOMAIN-SUFFIX,service-cdn.example,PROXY
 ```
 
 常见目标：
 
-- IDE/AI 服务慢：优先 `[类]-海外AI🤖`、`[单]-Cursor🐶`、`✈️ 手动选择` 或用户指定代理组。
+- 应用、IDE 或 AI 服务慢：优先选择当前运行配置中已有的 AI、海外、手动选择或用户指定策略组；不要因为文档示例自造组名。
 - 订阅、规则模板、本地服务：优先 `DIRECT`。
 - YouTube/TikTok/Apple 等：优先用户已有的专门策略组，不要混入 AI 组。
 
@@ -113,13 +113,13 @@ python3 scripts/update-node1024-rules.py \
 python3 scripts/update-node1024-rules.py \
   --uid "$NODE1024_UID" \
   --token "$NODE1024_TOKEN" \
-  --rule "DOMAIN-SUFFIX,example.com,[类]-海外AI🤖"
+  --rule "DOMAIN-SUFFIX,example.com,$TARGET_GROUP"
 
 # apply：写入远端
 python3 scripts/update-node1024-rules.py \
   --uid "$NODE1024_UID" \
   --token "$NODE1024_TOKEN" \
-  --rule "DOMAIN-SUFFIX,example.com,[类]-海外AI🤖" \
+  --rule "DOMAIN-SUFFIX,example.com,$TARGET_GROUP" \
   --apply
 
 # verify：读远端用户配置、生成订阅、本地运行规则
