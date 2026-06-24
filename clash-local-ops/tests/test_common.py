@@ -124,9 +124,9 @@ class EvidenceTests(unittest.TestCase):
 
 class RedactionTests(unittest.TestCase):
     def test_mask_url_redacts_token_without_encoding_mask(self):
-        result = mask_url("https://node.1024.hair/api/x?uid=519&token=d2f1441a2f96")
+        result = mask_url("https://node.1024.hair/api/x?uid=33&token=test")
 
-        self.assertEqual(result, "https://node.1024.hair/api/x?uid=519&token=d2f***96")
+        self.assertEqual(result, "https://node.1024.hair/api/x?uid=33&token=test")
 
 
 class RuntimeProcessTests(unittest.TestCase):
@@ -158,16 +158,16 @@ class MihomoPartyProfileTests(unittest.TestCase):
                 "  - id: abc123",
                 "    name: BIGME.yaml",
                 "    type: remote",
-                "    url: https://node.1024.hair/api/x?uid=519&token=d2f1441a2f96",
+                "    url: https://node.1024.hair/api/x?uid=33&token=test",
             ]
         )
 
         profile = find_node1024_profile(text)
 
         self.assertEqual(profile["id"], "abc123")
-        self.assertEqual(profile["uid"], "519")
-        self.assertEqual(profile["token"], "d2f1441a2f96")
-        self.assertEqual(profile["subscription_url"], "https://node.1024.hair/api/x?uid=519&token=d2f1441a2f96")
+        self.assertEqual(profile["uid"], "33")
+        self.assertEqual(profile["token"], "test")
+        self.assertEqual(profile["subscription_url"], "https://node.1024.hair/api/x?uid=33&token=test")
 
 
 class VerificationSummaryTests(unittest.TestCase):
