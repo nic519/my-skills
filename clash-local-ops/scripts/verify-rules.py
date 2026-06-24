@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify node.1024.hair ruleOverwrite propagation and local Mihomo rules."""
+"""校验 node.1024.hair ruleOverwrite、生成订阅和本地 Mihomo 规则是否一致。"""
 
 from __future__ import annotations
 
@@ -9,17 +9,21 @@ import os
 from pathlib import Path
 
 from clash_local_ops_common import (
+    contains_all_keywords,
     fetch_controller_json,
     mask_url,
     node1024_subscription_url,
     node1024_user_url,
     patch_controller_config,
     read_json_url,
+    read_text_url,
     summarize_verification_state,
 )
 
 
 def main() -> None:
+    """执行远端、订阅、本地文件和运行时规则的分层校验并输出 JSON。"""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.environ.get("NODE1024_BASE_URL", "https://node.1024.hair"))
     parser.add_argument("--uid", default=os.environ.get("NODE1024_UID"))
@@ -40,8 +44,8 @@ def main() -> None:
     rule_overwrite = user_response.get("data", {}).get("ruleOverwrite", "")
     subscription_text = read_text_url(subscription_url)
 
-    remote_ok = contains_all(rule_overwrite, keywords)
-    subscription_ok = contains_all(subscription_text, keywords)
+    remote_ok = contains_all_keywords(rule_overwrite, keywords)
+    subscription_ok = contains_all_keywords(subscription_text, keywords)
     local_ok = False
     runtime_ok = False
 
@@ -54,7 +58,7 @@ def main() -> None:
 
     if args.config_path:
         local_text = args.config_path.read_text(encoding="utf-8", errors="replace") if args.config_path.exists() else ""
-        local_ok = contains_all(local_text, keywords)
+        local_ok = contains_all_keywords(local_text, keywords)
         result["local_config_path"] = str(args.config_path)
         result["local_config_matches"] = local_ok
 
@@ -78,7 +82,7 @@ def main() -> None:
                     }
                 )
         result["runtime_rules"] = matched_rules
-        runtime_ok = contains_all("\n".join(matched_payload_text), keywords)
+        runtime_ok = contains_all_keywords("\n".join(matched_payload_text), keywords)
         result["runtime_rules_match"] = runtime_ok
 
     result["state"] = summarize_verification_state(
@@ -91,19 +95,6 @@ def main() -> None:
     )
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-def contains_all(text: str, keywords: list[str]) -> bool:
-    lowered = text.lower()
-    return all(keyword in lowered for keyword in keywords)
-
-
-def read_text_url(url: str, timeout: int = 30) -> str:
-    import urllib.request
-
-    request = urllib.request.Request(url, headers={"User-Agent": "clash-local-ops/1.0"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
 
 
 if __name__ == "__main__":

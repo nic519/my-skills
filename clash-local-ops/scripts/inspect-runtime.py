@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Inspect local Clash/Mihomo runtime without printing secrets."""
+"""检查本机 Clash/Mihomo 运行时状态，并避免输出敏感信息。"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import re
-import subprocess
 from pathlib import Path
 
-from clash_local_ops_common import is_runtime_process_line, mask_url
+from clash_local_ops_common import find_profile_item, find_scalar, is_runtime_process_line, mask_url, run_text
 
 
 def main() -> None:
+    """收集系统代理、Mihomo 进程和 Clash Party profile 摘要并输出 JSON。"""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app-root", type=Path, default=Path.home() / "Library/Application Support/mihomo-party")
     args = parser.parse_args()
@@ -27,6 +28,8 @@ def main() -> None:
 
 
 def read_system_proxy() -> dict[str, object]:
+    """读取 macOS 系统代理设置，用于判断请求是否可能进入本机代理。"""
+
     text = run_text(["scutil", "--proxy"], allow_failure=True)
     if not text:
         return {"available": False}
@@ -40,6 +43,8 @@ def read_system_proxy() -> dict[str, object]:
 
 
 def find_mihomo_processes(process_text: str) -> list[dict[str, object]]:
+    """从 ps 输出中筛选 Mihomo/Clash 运行时进程和 unix controller。"""
+
     rows = []
     for line in process_text.splitlines():
         if not is_runtime_process_line(line):
@@ -55,6 +60,8 @@ def find_mihomo_processes(process_text: str) -> list[dict[str, object]]:
 
 
 def inspect_mihomo_party(root: Path) -> dict[str, object]:
+    """读取 Clash Party 的 profile/work 配置路径，并脱敏展示当前 profile。"""
+
     profile_path = root / "profile.yaml"
     config_path = root / "work" / "config.yaml"
     result: dict[str, object] = {
@@ -82,39 +89,10 @@ def inspect_mihomo_party(root: Path) -> dict[str, object]:
     return result
 
 
-def find_scalar(text: str, key: str) -> str | None:
-    match = re.search(rf"^{re.escape(key)}:\s*(.+)$", text, flags=re.MULTILINE)
-    return match.group(1).strip() if match else None
-
-
-def find_profile_item(text: str, profile_id: str) -> dict[str, str] | None:
-    current_item: dict[str, str] | None = None
-    for line in text.splitlines():
-        id_match = re.match(r"\s*-\s+id:\s*(.+)", line)
-        if id_match:
-            if current_item and current_item.get("id") == profile_id:
-                return current_item
-            current_item = {"id": id_match.group(1).strip()}
-            continue
-        if current_item is None:
-            continue
-        field_match = re.match(r"\s{4}([A-Za-z][A-Za-z0-9_-]*):\s*(.*)", line)
-        if field_match:
-            current_item[field_match.group(1)] = field_match.group(2).strip()
-    if current_item and current_item.get("id") == profile_id:
-        return current_item
-    return None
-
-
 def trim_process_line(line: str) -> str:
+    """截短进程命令行并遮蔽 token，保留定位 controller 所需信息。"""
+
     return re.sub(r"(token=)[^\s&]+", r"\1***", line)[:300]
-
-
-def run_text(command: list[str], allow_failure: bool = False) -> str:
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
-    if result.returncode != 0 and not allow_failure:
-        raise RuntimeError(result.stderr.strip() or f"{command[0]} failed")
-    return result.stdout
 
 
 if __name__ == "__main__":

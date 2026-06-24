@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply node.1024.hair ruleOverwrite rules and refresh local Clash Party state."""
+"""写入 node.1024.hair ruleOverwrite，并按需刷新 Clash Party 本地状态。"""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ import os
 import shutil
 import subprocess
 import time
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 from clash_local_ops_common import (
     build_node1024_put_payload,
+    contains_all_keywords,
     fetch_controller_json,
     find_latest_unix_controller,
     find_node1024_profile,
@@ -25,11 +25,16 @@ from clash_local_ops_common import (
     patch_controller_config,
     put_json_url,
     read_json_url,
+    read_rule_file,
+    read_text_url,
+    run_text,
     summarize_verification_state,
 )
 
 
 def main() -> None:
+    """串联远端写入、订阅验证、本地刷新、重启和运行时规则校验。"""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.environ.get("NODE1024_BASE_URL", "https://node.1024.hair"))
     parser.add_argument("--app-root", type=Path, default=Path.home() / "Library/Application Support/mihomo-party")
@@ -76,8 +81,8 @@ def main() -> None:
     subscription_url = node1024_subscription_url(args.base_url, uid, token)
     subscription_text = read_text_url(subscription_url)
     keywords = rule_payload_keywords(rules)
-    remote_ok = contains_all(current_rule_overwrite, keywords)
-    subscription_ok = contains_all(subscription_text, keywords)
+    remote_ok = contains_all_keywords(current_rule_overwrite, keywords)
+    subscription_ok = contains_all_keywords(subscription_text, keywords)
     local_ok = False
     runtime_ok = False
     controller = args.controller or current_controller()
@@ -91,7 +96,7 @@ def main() -> None:
         if not subscription_ok:
             raise SystemExit("Generated subscription does not contain all requested rules; refusing local refresh")
         result["local_refresh"] = refresh_local_configs(args.app_root, profile, subscription_text)
-        local_ok = contains_all(config_path.read_text(encoding="utf-8", errors="replace"), keywords)
+        local_ok = contains_all_keywords(config_path.read_text(encoding="utf-8", errors="replace"), keywords)
         result["local_config_path"] = str(config_path)
         result["local_config_matches"] = local_ok
         if controller:
@@ -121,25 +126,17 @@ def main() -> None:
 
 
 def collect_rules(raw_rules: list[str], rule_file: Path | None) -> list[str]:
+    """汇总命令行传入的规则和规则文件中的规则。"""
+
     rules = list(raw_rules)
     if rule_file:
-        rules.extend(read_rules(rule_file))
-    return rules
-
-
-def read_rules(path: Path) -> list[str]:
-    rules: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line in {"+rules:", "rules:"}:
-            continue
-        if line.startswith("- "):
-            line = line[2:].strip()
-        rules.append(line)
+        rules.extend(read_rule_file(rule_file))
     return rules
 
 
 def rule_payload_keywords(rules: list[str]) -> list[str]:
+    """提取规则 payload 作为跨远端、订阅、本地和运行时校验的关键词。"""
+
     keywords = []
     for rule in rules:
         parts = [part.strip() for part in rule.split(",")]
@@ -147,18 +144,9 @@ def rule_payload_keywords(rules: list[str]) -> list[str]:
     return keywords
 
 
-def read_text_url(url: str, timeout: int = 30) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "clash-local-ops/1.0"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
-
-
-def contains_all(text: str, keywords: list[str]) -> bool:
-    lowered = text.lower()
-    return all(keyword in lowered for keyword in keywords)
-
-
 def refresh_local_configs(app_root: Path, profile: dict[str, str], subscription_text: str) -> dict[str, object]:
+    """用生成订阅覆盖 Clash Party profile 和 work 配置，并先备份旧文件。"""
+
     if "rules:" not in subscription_text:
         raise ValueError("Generated subscription does not look like a Clash config")
     profile_id = profile.get("id")
@@ -184,10 +172,14 @@ def refresh_local_configs(app_root: Path, profile: dict[str, str], subscription_
 
 
 def current_controller() -> str | None:
+    """从当前进程列表自动探测 Mihomo unix controller。"""
+
     return find_latest_unix_controller(run_text(["ps", "aux"]))
 
 
 def wait_for_controller(previous: str | None, timeout: int = 20) -> str | None:
+    """重启应用后等待新的 Mihomo controller 出现，超时则返回最后候选。"""
+
     deadline = time.time() + timeout
     latest = current_controller()
     while time.time() < deadline:
@@ -199,6 +191,8 @@ def wait_for_controller(previous: str | None, timeout: int = 20) -> str | None:
 
 
 def runtime_rule_matches(controller: str, keywords: list[str]) -> tuple[list[dict[str, object]], bool]:
+    """在当前 Mihomo /rules 中查找目标 payload，并判断关键词是否全部命中。"""
+
     rules = fetch_controller_json(controller, "/rules")
     matched_rules = []
     matched_payloads = []
@@ -213,19 +207,16 @@ def runtime_rule_matches(controller: str, keywords: list[str]) -> tuple[list[dic
                     "proxy": rule.get("proxy"),
                 }
             )
-    return matched_rules, contains_all("\n".join(matched_payloads), keywords)
+    return matched_rules, contains_all_keywords("\n".join(matched_payloads), keywords)
 
 
 def restart_app(app_name: str) -> None:
+    """通过 AppleScript 退出并重新打开 Clash Party 等 macOS 应用。"""
+
     subprocess.run(["osascript", "-e", f'tell application "{app_name}" to quit'], check=False)
     time.sleep(3)
     subprocess.run(["open", "-a", app_name], check=True)
     time.sleep(3)
-
-
-def run_text(command: list[str]) -> str:
-    result = subprocess.run(command, text=True, capture_output=True, check=True)
-    return result.stdout
 
 
 if __name__ == "__main__":

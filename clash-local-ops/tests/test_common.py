@@ -1,5 +1,6 @@
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,17 +12,25 @@ sys.path.insert(0, str(SCRIPT_DIR))
 from clash_local_ops_common import (  # noqa: E402
     build_node1024_put_payload,
     collect_matching_connections,
+    contains_all_keywords,
     find_latest_unix_controller,
     find_node1024_profile,
     is_runtime_process_line,
     mask_url,
     merge_rule_overwrite,
+    read_rule_file,
+    read_text_url,
+    run_text,
     summarize_verification_state,
 )
 
 
 class RuleOverwriteTests(unittest.TestCase):
+    """验证 ruleOverwrite 解析、合并和规则文件读取的公共行为。"""
+
     def test_merge_prepends_new_rules_and_deduplicates_existing_rules(self):
+        """新规则应前置，和已有规则完全重复时只保留一份。"""
+
         current = "\n".join(
             [
                 "+rules:",
@@ -51,13 +60,40 @@ class RuleOverwriteTests(unittest.TestCase):
         )
 
     def test_merge_creates_rules_block_when_current_is_empty(self):
+        """空复写内容应生成合法的 +rules 块。"""
+
         result = merge_rule_overwrite("", ["DOMAIN,example.com,DIRECT"])
 
         self.assertEqual(result, "+rules:\n  - DOMAIN,example.com,DIRECT")
 
+    def test_read_rule_file_accepts_rules_block_or_plain_rules(self):
+        """规则文件既可以是 +rules YAML 块，也可以是一行一条裸规则。"""
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "rules.yaml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "+rules:",
+                        "  - DOMAIN,api.example.com,DIRECT",
+                        "DOMAIN-SUFFIX,example.com,Proxy",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                read_rule_file(path),
+                ["DOMAIN,api.example.com,DIRECT", "DOMAIN-SUFFIX,example.com,Proxy"],
+            )
+
 
 class SkillPositioningTests(unittest.TestCase):
+    """锁定 skill 文案的定位，避免未来又默认写回远端配置。"""
+
     def test_skill_is_clash_diagnosis_first_not_node1024_writeback_first(self):
+        """技能触发描述应以 Clash/Mihomo 排查为主。"""
+
         text = SKILL_PATH.read_text(encoding="utf-8")
         frontmatter = text.split("---", 2)[1]
 
@@ -67,6 +103,8 @@ class SkillPositioningTests(unittest.TestCase):
         self.assertIn("不要把写回 `node.1024.hair` 当成默认解决路径", text)
 
     def test_node1024_writeback_requires_yaml_subscription_management_url(self):
+        """写回 node.1024.hair 必须以用户配置里的管理地址为条件。"""
+
         text = SKILL_PATH.read_text(encoding="utf-8")
 
         self.assertIn("只有看到用户的 YAML/配置中包含", text)
@@ -75,7 +113,11 @@ class SkillPositioningTests(unittest.TestCase):
 
 
 class Node1024PayloadTests(unittest.TestCase):
+    """验证 node.1024.hair 写回 payload 的保形逻辑。"""
+
     def test_build_payload_preserves_full_data_config_shape(self):
+        """写回时只替换 ruleOverwrite，其他配置字段必须原样保留。"""
+
         response = {
             "code": 0,
             "msg": "操作成功",
@@ -97,12 +139,18 @@ class Node1024PayloadTests(unittest.TestCase):
         self.assertEqual(payload["config"]["ruleOverwrite"], "+rules:\n  - DOMAIN,new.example,DIRECT")
 
     def test_build_payload_rejects_missing_access_token(self):
+        """缺少 accessToken 时拒绝构造 PUT payload，避免写入不完整配置。"""
+
         with self.assertRaises(ValueError):
             build_node1024_put_payload({"code": 0, "data": {"ruleOverwrite": ""}}, "+rules:")
 
 
 class EvidenceTests(unittest.TestCase):
+    """验证从 Mihomo connections 响应里提取排查证据的逻辑。"""
+
     def test_collect_matching_connections_summarizes_hosts_and_chains(self):
+        """按关键词匹配 host、规则和链路，并输出便于阅读的连接摘要。"""
+
         payload = {
             "connections": [
                 {
@@ -142,18 +190,47 @@ class EvidenceTests(unittest.TestCase):
 
 
 class RedactionTests(unittest.TestCase):
+    """验证敏感 URL 展示前的脱敏策略。"""
+
     def test_mask_url_redacts_token_without_encoding_mask(self):
+        """token 查询参数必须被遮蔽，避免在输出或异常中泄漏。"""
+
         result = mask_url("https://node.1024.hair/api/x?uid=33&token=test")
 
         self.assertEqual(result, "https://node.1024.hair/api/x?uid=33&token=***")
 
+    def test_read_text_url_reads_utf8_text(self):
+        """文本 URL 读取 helper 应保留 UTF-8 内容，供订阅配置校验复用。"""
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "config.yaml"
+            path.write_text("rules:\n  - DOMAIN,例子.test,DIRECT\n", encoding="utf-8")
+
+            self.assertIn("例子.test", read_text_url(path.as_uri()))
+
 
 class RuntimeProcessTests(unittest.TestCase):
+    """验证本机运行进程识别，避免把排查脚本自身当成 Mihomo。"""
+
+    def test_run_text_returns_stdout_for_successful_command(self):
+        """本机命令 helper 应返回 stdout，供进程和系统代理探测复用。"""
+
+        self.assertEqual(run_text([sys.executable, "-c", "print('ok')"]), "ok\n")
+
+    def test_run_text_can_tolerate_expected_failure(self):
+        """允许失败时，命令退出非零不应中断可选证据采集。"""
+
+        self.assertEqual(run_text([sys.executable, "-c", "raise SystemExit(7)"], allow_failure=True), "")
+
     def test_runtime_process_filter_skips_this_skill_scripts(self):
+        """运行时筛选应排除本 skill 的脚本命令行。"""
+
         self.assertFalse(is_runtime_process_line("/bin/zsh -c python3 clash-local-ops/scripts/inspect-runtime.py"))
         self.assertTrue(is_runtime_process_line("/Applications/Clash Party.app/Contents/Resources/sidecar/mihomo -ext-ctl-unix /tmp/mihomo.sock"))
 
     def test_find_latest_unix_controller_uses_active_mihomo_socket(self):
+        """多个 Mihomo 进程存在时，取最后出现的 unix controller 作为当前候选。"""
+
         process_text = "\n".join(
             [
                 "root 932 0.0 /Applications/Clash Party.app/Contents/Resources/sidecar/mihomo -d /Users/me/Library/Application Support/mihomo-party/work -ext-ctl-unix /tmp/mihomo-party-501-667.sock",
@@ -165,7 +242,11 @@ class RuntimeProcessTests(unittest.TestCase):
 
 
 class MihomoPartyProfileTests(unittest.TestCase):
+    """验证 Clash Party profile.yaml 中 node.1024.hair 配置的解析。"""
+
     def test_find_node1024_profile_returns_current_profile_credentials(self):
+        """优先返回 current 指向的 node.1024.hair profile 和凭据。"""
+
         text = "\n".join(
             [
                 "current: abc123",
@@ -190,7 +271,11 @@ class MihomoPartyProfileTests(unittest.TestCase):
 
 
 class VerificationSummaryTests(unittest.TestCase):
+    """验证远端、订阅、本地和运行时四层状态的归纳结果。"""
+
     def test_runtime_stale_recommends_restart_after_remote_and_local_are_ok(self):
+        """远端和本地都正确但运行时未加载时，应建议重启 Clash Party。"""
+
         summary = summarize_verification_state(
             remote_ok=True,
             subscription_ok=True,
@@ -204,6 +289,8 @@ class VerificationSummaryTests(unittest.TestCase):
         self.assertEqual(summary["recommended_next_action"], "restart_clash_party")
 
     def test_remote_ready_recommends_refreshing_local_config_when_no_local_check(self):
+        """只确认远端与订阅成功时，应提示继续刷新本地配置。"""
+
         summary = summarize_verification_state(
             remote_ok=True,
             subscription_ok=True,

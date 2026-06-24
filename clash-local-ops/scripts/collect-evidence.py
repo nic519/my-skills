@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect Clash/Mihomo connection evidence for app or domain keywords."""
+"""按应用、域名或链路关键词收集 Clash/Mihomo 连接证据。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from clash_local_ops_common import collect_matching_connections, fetch_controlle
 
 
 def main() -> None:
+    """解析命令行参数，读取 /connections 并输出匹配连接摘要。"""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--controller", required=True, help="Controller base URL or unix:/path/to.sock")
     parser.add_argument("--keywords", required=True, help="Comma-separated host/process/chain keywords")

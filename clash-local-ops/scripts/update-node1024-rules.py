@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge ruleOverwrite rules into node.1024.hair user config."""
+"""把规则合并进 node.1024.hair 用户配置的 ruleOverwrite。"""
 
 from __future__ import annotations
 
@@ -15,10 +15,13 @@ from clash_local_ops_common import (
     node1024_user_url,
     put_json_url,
     read_json_url,
+    read_rule_file,
 )
 
 
 def main() -> None:
+    """执行 ruleOverwrite dry-run 或写回，输出脱敏后的操作摘要。"""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.environ.get("NODE1024_BASE_URL", "https://node.1024.hair"))
     parser.add_argument("--uid", default=os.environ.get("NODE1024_UID"))
@@ -33,7 +36,7 @@ def main() -> None:
 
     new_rules = list(args.rule)
     if args.rule_file:
-        new_rules.extend(read_rules(args.rule_file))
+        new_rules.extend(read_rule_file(args.rule_file))
     if not new_rules:
         raise SystemExit("Provide at least one --rule or --rule-file")
 
@@ -58,18 +61,6 @@ def main() -> None:
         }
 
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-def read_rules(path: Path) -> list[str]:
-    rules: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line in {"+rules:", "rules:"}:
-            continue
-        if line.startswith("- "):
-            line = line[2:].strip()
-        rules.append(line)
-    return rules
 
 
 if __name__ == "__main__":
